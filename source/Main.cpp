@@ -24,6 +24,9 @@ public:
     static inline bool drawMouse = false;
     static inline bool checkHover = false;
 
+    static inline bool bSkipTitleMenu = false;
+    static inline bool bUseCELogo = true;
+
     static void DrawCharacter(CSprite2d* sprite, int32_t i, bool selected) {
         float hw = 205.0f;
         float h = 550.0f;
@@ -60,20 +63,36 @@ public:
         }
     }
 
+    static const CControllerAction* GetAction(int32_t action) {
+        return &ControlsManager[CONTROLLER_KEYBOARD1].m_actions[action];
+    }
+
+    static const bool GetAxisLeft() {
+        return CPad::GetPad(0)->NewState.LeftStickX < 0 && CPad::GetPad(0)->OldState.LeftStickX >= 0;
+    }
+
+    static const bool GetAxisRight() {
+        return CPad::GetPad(0)->NewState.LeftStickX > 0 && CPad::GetPad(0)->OldState.LeftStickX <= 0;
+    }
+
     static bool GetLeft() {
-        return !ControlsManager[CONTROLLER_KEYBOARD1].m_actions[INPUT_FRONTEND_LEFT].m_nNewState && ControlsManager[CONTROLLER_KEYBOARD1].m_actions[INPUT_FRONTEND_LEFT].m_nOldState;
+        return (!GetAction(INPUT_FRONTEND_LEFT)->m_nNewState && GetAction(INPUT_FRONTEND_LEFT)->m_nOldState) ||
+            (!GetAction(INPUT_FRONTEND_AXIS_LEFT)->m_nNewState && GetAction(INPUT_FRONTEND_AXIS_LEFT)->m_nOldState) ||
+            (GetAxisLeft());
     }
 
     static bool GetRight() {
-        return !ControlsManager[CONTROLLER_KEYBOARD1].m_actions[INPUT_FRONTEND_RIGHT].m_nNewState && ControlsManager[CONTROLLER_KEYBOARD1].m_actions[INPUT_FRONTEND_RIGHT].m_nOldState;
+        return (!GetAction(INPUT_FRONTEND_RIGHT)->m_nNewState && GetAction(INPUT_FRONTEND_RIGHT)->m_nOldState) ||
+            (!GetAction(INPUT_FRONTEND_AXIS_RIGHT)->m_nNewState && GetAction(INPUT_FRONTEND_AXIS_RIGHT)->m_nOldState) ||
+            (GetAxisRight());
     }
 
     static bool GetEnter() {
-        return !ControlsManager[CONTROLLER_KEYBOARD1].m_actions[INPUT_FRONTEND_ACCEPT].m_nNewState && ControlsManager[CONTROLLER_KEYBOARD1].m_actions[INPUT_FRONTEND_ACCEPT].m_nOldState;
+        return !GetAction(INPUT_FRONTEND_ACCEPT)->m_nNewState && GetAction(INPUT_FRONTEND_ACCEPT)->m_nOldState;
     }
     
     static bool GetQuit() {
-        return !ControlsManager[CONTROLLER_KEYBOARD1].m_actions[INPUT_FRONTEND_PAUSE].m_nNewState && ControlsManager[CONTROLLER_KEYBOARD1].m_actions[INPUT_FRONTEND_PAUSE].m_nOldState;
+        return !GetAction(INPUT_FRONTEND_PAUSE)->m_nNewState && GetAction(INPUT_FRONTEND_PAUSE)->m_nOldState;
     }
 
     static bool GetLMB() {
@@ -104,30 +123,16 @@ public:
     }
 
     static void DrawHelpText() {
-        CFont::SetProportional(true);
-        CFont::SetBackground(false, false);
-        CFont::SetEdge(0.0f);
-        CFont::SetFontStyle(8);
-        CFont::SetColor(CHudColours::Get(HUD_COLOUR_GREY));
-        CFont::SetDropColor(CHudColours::Get(HUD_COLOUR_BLACK));
-        CFont::SetOrientation(ALIGN_RIGHT);
-        CFont::SetScale(0.2f, 0.38f);
+        CMenuManager::SetHelpText("MO_EXITGAM", "PAD_START", 1);
+        CMenuManager::SetHelpText("E1_SELECT", "FE_ACCEPT", 0);
+        CMenuManager::SetHelpText("FE_HLP4", "FE_BUTL", 0);
+        CMenuManager::DrawHelpText();
+    }
 
-        std::wstring str = {};
-        str += L"~INPUT_FRONTEND_LEFT~ ~INPUT_FRONTEND_RIGHT~  ";
-        str += TheText.Get(0x1DA5B02D, 0); // Select
-        str += L"    ";
-
-        str += L"~INPUT_FRONTEND_ACCEPT~  ";
-        str += TheText.Get(0x3A4F4766, 0); // Start
-        str += L"    ";
-
-        str += L"~INPUT_FRONTEND_PAUSE~  ";
-        str += TheText.Get(0x92480A6F, 0); // Quit
-
-        CFont::SetWrapx(0.0f, 0.92f);
-        CFont::PrintString(0.0f, 0.88f, str.c_str());
-        CFont::DrawFonts();
+    static void ReadSettings() {
+        config_file config(true, false);
+        bSkipTitleMenu = config["bSkipTitleMenu"].asBool(false);
+        bUseCELogo = config["bUseCELogo"].asBool(true);
     }
 
     ConsoleSelectMenuIV() {
@@ -144,6 +149,8 @@ public:
             gta.SetTexture("gta");
 
             CTxdStore::PopCurrentTxd();
+
+            ReadSettings();
         };
 
         plugin::Events::shutdownEngineEvent += []() {
@@ -156,7 +163,8 @@ public:
             CTxdStore::RemoveTxdSlot(slot);
         };
 
-        plugin::patch::RedirectJump(0x5A3090, Dummy);
+        static auto a = plugin::pattern::Get("64 A1 ? ? ? ? 83 EC 1C 8B 00 56 8B 48 08", 0);
+        plugin::patch::RedirectJump(a, Dummy);
 
         plugin::Events::menuProcessEvent += []() {
             if (CMenuManager::m_DefaultFrontend || CMenuManager::m_Refresh)
@@ -194,13 +202,19 @@ public:
             bool lmb = GetLMB();
             if (lmb || GetEnter()) {
                 SetEpisodeString();
-                CMenuManager::m_SelectEpisode = 0;
-                CMenuManager::m_DefaultFrontend = 1;
-                CMenuManager::m_Refresh = 1;
-                drawMouse = false;
+
+                if (bSkipTitleMenu)
+                    CMenuManager::m_CurrState = MENUSTATE_START_GAME;
+                else {
+                    CMenuManager::m_SelectEpisode = 0;
+                    CMenuManager::m_DefaultFrontend = 1;
+                    CMenuManager::m_Refresh = 1;
+                }
 
                 if (lmb)
                     FrontendAudioEntity.ReportFrontendAudioEvent("FRONTEND_MENU_SELECT");
+
+                drawMouse = false;
             }
 
             if (GetQuit()) {
@@ -244,7 +258,7 @@ public:
         // Use CE logo on intro :P
         static CdeclEvent <AddressList<0x5CC56D, H_CALL>, PRIORITY_AFTER, ArgPick2N<rage::grcTexturePC*, 0, uint8_t, 1>, void(rage::grcTexturePC*, uint8_t)> onSetLoadingScreenTex({ "E8 ? ? ? ? F3 0F 10 4C 24 ? F3 0F 10 5C 24 ? 83 C4 08" });
         onSetLoadingScreenTex += [](rage::grcTexturePC* tex, uint8_t) {
-            if (!strcmp(tex->m_Name, "pack:/gta.dds")) {
+            if (bUseCELogo && !strcmp(tex->m_Name, "pack:/gta.dds")) {
                 gta.SetRenderState();
             }
         };
