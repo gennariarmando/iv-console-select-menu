@@ -7,7 +7,7 @@ Compatible only with GTA IV The Complete Edition.
 # Screenshot
 <p align="center">
 <img src="https://i.imgur.com/9JHaZTU.png" width="640" height="360">
-<img src="https://i.imgur.com/mYN9NsZ.png" width="640" height="360">
+<img src="https://i.imgur.com/grkONd0.png" width="640" height="360">
 </p>
 
 # How to install
