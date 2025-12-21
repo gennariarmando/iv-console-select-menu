@@ -1,13 +1,18 @@
 #include "plugin.h"
-#include "T_CB_Generic.h"
-#include "CTxdStore.h"
-#include "CMenuManager.h"
+
 #include "audFrontendAudioEntity.h"
-#include "CControllerConfigManager.h"
-#include "CPad.h"
+#include "T_CB_Generic.h"
+
+#include "CControl.h"
+#include "CControlMgr.h"
 #include "CFont.h"
 #include "CHudColours.h"
+#include "CMenuManager.h"
+#include "CPad.h"
+#include "CTxdStore.h"
 #include "CText.h"
+
+#include "rage/ioValue.h"
 
 #include "Utility.h"
 
@@ -63,8 +68,8 @@ public:
         }
     }
 
-    static const CControllerAction* GetAction(int32_t action) {
-        return &ControlsManager[CONTROLLER_KEYBOARD1].m_actions[action];
+    static const rage::ioValue* GetAction(int32_t action) {
+        return &CControlMgr::m_controls[0].m_inputs[action];
     }
 
     static const bool GetAxisLeft() {
@@ -76,30 +81,30 @@ public:
     }
 
     static bool GetLeft() {
-        return (!GetAction(INPUT_FRONTEND_LEFT)->m_nNewState && GetAction(INPUT_FRONTEND_LEFT)->m_nOldState) ||
-            (!GetAction(INPUT_FRONTEND_AXIS_LEFT)->m_nNewState && GetAction(INPUT_FRONTEND_AXIS_LEFT)->m_nOldState) ||
+        return (!GetAction(rage::INPUT_FRONTEND_LEFT)->m_nNewState && GetAction(rage::INPUT_FRONTEND_LEFT)->m_nOldState) ||
+            (!GetAction(rage::INPUT_FRONTEND_AXIS_LEFT)->m_nNewState && GetAction(rage::INPUT_FRONTEND_AXIS_LEFT)->m_nOldState) ||
             (GetAxisLeft());
     }
 
     static bool GetRight() {
-        return (!GetAction(INPUT_FRONTEND_RIGHT)->m_nNewState && GetAction(INPUT_FRONTEND_RIGHT)->m_nOldState) ||
-            (!GetAction(INPUT_FRONTEND_AXIS_RIGHT)->m_nNewState && GetAction(INPUT_FRONTEND_AXIS_RIGHT)->m_nOldState) ||
+        return (!GetAction(rage::INPUT_FRONTEND_RIGHT)->m_nNewState && GetAction(rage::INPUT_FRONTEND_RIGHT)->m_nOldState) ||
+            (!GetAction(rage::INPUT_FRONTEND_AXIS_RIGHT)->m_nNewState && GetAction(rage::INPUT_FRONTEND_AXIS_RIGHT)->m_nOldState) ||
             (GetAxisRight());
     }
 
     static bool GetEnter() {
-        return !GetAction(INPUT_FRONTEND_ACCEPT)->m_nNewState && GetAction(INPUT_FRONTEND_ACCEPT)->m_nOldState;
+        return !GetAction(rage::INPUT_FRONTEND_ACCEPT)->m_nNewState && GetAction(rage::INPUT_FRONTEND_ACCEPT)->m_nOldState;
     }
     
     static bool GetQuit() {
-        return !GetAction(INPUT_FRONTEND_PAUSE)->m_nNewState && GetAction(INPUT_FRONTEND_PAUSE)->m_nOldState;
+        return !GetAction(rage::INPUT_FRONTEND_PAUSE)->m_nNewState && GetAction(rage::INPUT_FRONTEND_PAUSE)->m_nOldState;
     }
 
     static bool GetLMB() {
         if (!checkHover)
             return false;
 
-        return ControlsManager[CONTROLLER_KEYBOARD1].m_actions[INPUT_MOUSE_LMB].m_nNewState && !ControlsManager[CONTROLLER_KEYBOARD1].m_actions[INPUT_MOUSE_LMB].m_nOldState;
+        return CControlMgr::m_controls[0].m_inputs[rage::INPUT_MOUSE_LMB].m_nNewState && !CControlMgr::m_controls[0].m_inputs[rage::INPUT_MOUSE_LMB].m_nOldState;
     }
 
     static void Dummy() {
@@ -196,11 +201,15 @@ public:
 
             if (selectedEpisode != prevEpisode) {
                 prevEpisode = selectedEpisode;
-                FrontendAudioEntity.ReportFrontendAudioEvent("FRONTEND_MENU_HIGHLIGHT");
+                g_FrontendAudioEntity.PlaySound("FRONTEND_MENU_HIGHLIGHT");
             }
 
-            bool lmb = GetLMB();
-            if (lmb || GetEnter()) {
+            if (GetLMB() || GetEnter()) {
+                // Only avoid playing the sound if the original title menu is not skipped and if enter is pressed
+                // (Because normally under this condition the sound plays already, so it would play twice otherwise)
+                if (!(!bSkipTitleMenu && GetEnter()))
+                    g_FrontendAudioEntity.PlaySound("FRONTEND_MENU_SELECT");
+
                 SetEpisodeString();
 
                 if (bSkipTitleMenu)
@@ -211,19 +220,16 @@ public:
                     CMenuManager::m_Refresh = 1;
                 }
 
-                if (lmb)
-                    FrontendAudioEntity.ReportFrontendAudioEvent("FRONTEND_MENU_SELECT");
-
                 drawMouse = false;
             }
 
             if (GetQuit()) {
                 CMenuManager::m_CurrState = MENUSTATE_QUIT_ASK;
-                FrontendAudioEntity.ReportFrontendAudioEvent("FRONTEND_MENU_BACK");
+                g_FrontendAudioEntity.PlaySound("FRONTEND_MENU_BACK");
                 drawMouse = false;
             }
 
-            if (CControllerConfigManager::m_UsingMouse) {
+            if (CControl::m_UsingMouse) {
                 drawMouse = true;
             }
 
