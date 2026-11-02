@@ -255,8 +255,17 @@ public:
 
                 DrawHelpText();
 
-                if (drawMouse)
-                    CMenuManager::DrawMouseCursor();
+                if (drawMouse) {
+                    static const uintptr_t address = [] {
+                        hook::pattern matches("? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? ? 80 B8 ? ? ? ? ? 75 ? 83 3D ? ? ? ? ? 75");
+                        return matches.size() == 1
+                            ? reinterpret_cast<uintptr_t>(matches.get(0).get<void>(0))
+                            : 0;
+                    }();
+
+                    if (address)
+                        plugin::CallDyn(address);
+                }
             });
             CBaseDC::InitStatic(dc);
         };
